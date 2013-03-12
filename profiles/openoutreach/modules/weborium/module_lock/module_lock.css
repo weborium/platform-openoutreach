@@ -1,0 +1,11 @@
+/**
+ * Custom css for module_lock
+ *
+ * Created by James Scott (jlscott).
+ * March 2013
+ */
+
+tr.odd.locked,
+tr.even.locked {
+    background-color: #ffb0b0;
+}

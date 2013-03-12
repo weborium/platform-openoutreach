@@ -1,0 +1,6 @@
+; $Id$
+name = Hosted Site
+description = Functions for integrating a hosted client site into Weborium aegir hosting
+package = Weborium
+core = 7.x
+version = "7.x-1.3"

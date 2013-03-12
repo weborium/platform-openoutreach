@@ -1,0 +1,16 @@
+<?php
+/**
+ * @file
+ * Install, update, and uninstall functions for module_lock.
+ *
+ * Created by James Scott (jlscott).
+ * March 2013
+ */
+
+/**
+ * Implementation of hook_uninstall()
+ */
+function module_lock_uninstall() {
+  // Delete any variables created
+  variable_del('module_lock_locked');
+}

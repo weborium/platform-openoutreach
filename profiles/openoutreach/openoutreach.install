@@ -4,7 +4,7 @@
  * @file
  * Install function for the openoutreach profile.
  */
- 
+
 /**
  * Minimum recommended value of PHP memory_limit for Open Outreach.
  */
@@ -145,6 +145,35 @@ function openoutreach_install() {
     'weight' => -10,
   );
   shortcut_set_save($shortcut_set);
+
+  // Include Weborium customisations
+  variable_set('hosted_site_master_url', 'alpha.weborium.net');
+  variable_set('update_notification_threshold', 'security');
+  // Lock some modules
+  $locked_modules = array(
+    'module_lock',
+    'permissions_lock',
+    'userone',
+    'hosted_site',
+  );
+  variable_set('module_lock_locked', $locked_modules);
+  // remove some permissions from administrator role (rid=3)
+  $rid = $admin_role->rid;
+  $permissions = array(
+    'administer module locks' => FALSE,
+    'manage permission locks' => FALSE,
+    'manage permissions unrestricted' => FALSE,
+  );
+  user_role_change_permissions($rid, $permissions);
+  // lock these permissions
+  variable_set('permissions_lock_locked_perm', array(
+    'administer module locks' => 'administer module locks',
+    'manage permission locks' => 'manage permission locks',
+    'manage permissions unrestricted' => 'manage permissions unrestricted',
+  ));
+  // lock the administrator role
+  variable_set('permissions_lock_locked_roles', array($rid => $rid));
+
 }
 
 /**

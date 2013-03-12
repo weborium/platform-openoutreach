@@ -1,0 +1,227 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Provides hosted site functionality for integration of Weborium aegir hosting with Ubercart
+ *
+ */
+
+/**
+ * Implementation of hook_init()
+ *
+ * @return n/a
+ */
+function hosted_site_init() {
+}
+
+/**
+ * Implementation of hook_menu_alter
+ * implement a special user access callback function to provide more control over
+ * access to user profile for user #1
+ *
+ * @param $menu_entries Associative array of menu router definitions returned from hook_menu().
+ *
+ * @return n/a
+ */
+/*****************************************************************
+function hosted_site_menu_alter(&$menu_entries) {
+  //$menu_entries['user/%user/delete']['access callback'] = 'hosted_site_user_delete_access';
+  $menu_entries['user/%user_uid_optional']['access callback'] = 'hosted_site_user_check_access';
+  $menu_entries['user/%user_uid_optional']['access arguments'] = array(1);
+  $menu_entries['user/%user_category/edit']['access callback'] = 'hosted_site_user_check_access';
+  $menu_entries['user/%user_category/edit']['access arguments'] = array(1);
+}
+*****************************************************************/
+/**
+ * User access callback function
+ *
+ * @param $account user account or uid
+ * @return bool
+ */
+/************************************************
+function hosted_site_user_check_access($account) {
+  global $user;
+  if ($user->uid == 1) { return TRUE; }
+  if (is_numeric($account)) {
+    $account = user_load($account);
+  }
+  // User #1 account can only be processed by user #1
+  if ($account && $account->uid == 1) { return FALSE; }
+  // use normal permission checking if the user is not #1
+  return user_view_access($account);
+}
+****************************************************
+
+/**
+ * Implementation of hook_form_alter
+ * @param $form
+ * @param $form_state
+ * @param $form_id
+ */
+//function hosted_site_form_alter(&$form, &$form_state, $form_id) {
+//  mainspring_debug_log('form_alter called - form_id = '.$form_id);
+//}
+
+/**
+ * Implementation of hook_form_FORMID_alter
+ *
+ * @param $form - array of form elements
+ * @param $form_state - not used
+ * @return n/a
+ */
+/**********************************************************************
+function hosted_site_form_system_modules_alter(&$form, &$form_state) {
+  //mainspring_debug_dump('function hosted_site_form_system_modules_alter',$form,'system-modules-form');
+  // Only user #1 is allowed to process some modules
+  global $user;
+  if ($user->uid == 1) { return; }
+  // Remove some modules from the list presented to the user
+  $restricted_modules = array(
+    'Core->php',
+    'Weborium',
+  );
+  $restricted_modules += variable_get('hosted_site_restricted_modules', array());
+  foreach ($restricted_modules as $module) {
+    hosted_site_array_unset($form['modules'], $module);
+  }
+}
+
+function hosted_site_array_unset(&$arr, $val) {
+  if ($ix = strpos($val, '->')) {
+    hosted_site_array_unset($arr[substr($val, 0, $ix)], substr($val, $ix+2));
+  }
+  else {
+    unset($arr[$val]);
+  }
+}
+*************************************************************************/
+
+/**
+ * Implementation of hook_form_FORMID_alter
+ *
+ * @param $form - array of form elements
+ * @param $form_state - not used
+ * @return n/a
+ */
+/********************************************************
+function hosted_site_form_user_admin_account_alter(&$form, &$form_state) {
+  //mainspring_debug_dump('function hosted_site_form_user_admin_account_alter', $form, 'user-admin-account-form');
+  // Only user #1 is allowed to see User#1 details on admin form
+  global $user;
+  if ($user->uid == 1) { return; }
+  // Unset UID#1 details on the user administration form
+  unset($form['accounts']['#options'][1]);
+}
+**********************************************************
+
+/**
+ * Implementation of hook_form_FORMID_alter
+ * Suppress the user registration form if the maximum user count
+ * has already been reached.
+ *
+ * @param $form - array of form elements
+ * @param $form_state - not used
+ * @return n/a
+ */
+/*****************************************************************
+function hosted_site_form_user_register_form_alter(&$form, &$form_state) {
+  //mainspring_debug_dump('function hosted_site_form_user_register_alter', $form, 'user-register-form');
+  if (hosted_site_limit_reached('users')) {
+    // add advice to user that maximum allowed already registered
+    $form['advice'] = array(
+      '#type' => 'container',
+      '#weight' => $form['account']['#weight'],
+    );
+    $form['advice']['advice_1'] = array(
+      '#type' => 'item',
+      '#markup' => t('Maximum number of user logins already created!'),
+      '#theme_wrappers' => array('container__hosted_site__form_alter__user_register_form'),
+      '#attributes' => array('class' => array('highlight')),
+    );
+    $form['advice']['advice_2'] = array(
+      '#type' => 'item',
+      '#markup' => t('You will need to purchase additional users from the store before you can create a new login.'),
+      '#theme_wrappers' => array('container__hosted_site__form_alter__user_register_form'),
+      '#attributes' => array('class' => array('')),
+    );
+    $form['advice']['advice_3'] = array(
+      '#type' => 'item',
+      '#markup' => t('Alternatively, you can delete an unused existing user to make space for creating a new one.'),
+      '#theme_wrappers' => array('container__hosted_site__form_alter__user_register_form'),
+      '#attributes' => array('class' => array('')),
+    );
+    // Unset the form fields to prevent further registrations
+    unset($form['account']);
+
+    // Change the label on the submit button
+    $form['actions']['submit']['#value'] = t('Continue');
+  }
+}
+*********************************************************************************/
+
+/**
+ * Function to check whether a resource limit has been reached
+ *
+ * @param $type - type of resource to check. One of 'users', ...
+ * @return bool
+ */
+function hosted_site_limit_reached($type) {
+  // get the maximum value allowed for this type from the master server via an rpc call
+  $limit = hosted_site_get_limit($type);
+  // a zero limit value means none allowed and a negative value means unlimited
+  if (!$limit || $limit === NULL) { return TRUE; }
+  if (is_numeric($limit) && $limit < 0) { return FALSE; }
+  // Specify the SQL statement
+  switch ($type) {
+  case 'users':
+    $count = db_query("SELECT COUNT(*) FROM {users} WHERE uid > :uid", array(':uid'=>1))->fetchField();
+    break;
+  default:
+    $count = 0;
+  }
+  if ($count < $limit) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Function to implement an xmlrpc call to the hosting master site
+ *
+ * @param $type - type of resource to check. One of 'users', ...
+ * @return integer - limit defined for this resource for this site
+ */
+function hosted_site_get_limit($type) {
+  $this_site = hosted_site_get_my_domain();
+  $master_url = hosted_site_get_master_url();
+  $server = url('http://'.$master_url.'/xmlrpc.php', array('external'=>TRUE));
+  $result = xmlrpc($server, array('weborium.getResourceMax'=>array($this_site, $type)));
+  //mainspring_debug_log(t('hosted_site_get_limit: result=@result',array('@result'=>$result)));
+  // if type is valid and a limit has been defined, returned value is the maximum value
+  // else returned value is NULL.  But first test for XMLRPC errors
+  if ($result === FALSE) {
+    $error = xmlrpc_error();
+    //mainspring_debug_dump('function hosted_site_get_limit', $error, 'xmlrpc-error');
+    if (!isset($error->message)) {
+      if ($error->code <= 0) {
+        $error->message = t('Outgoing HTTP request failed - socket could not be opened!');
+      }
+    }
+    drupal_set_message (t('Can not confirm the maximum value permitted for resource type @type - the request returned an error: %msg (@code).',
+      array('@type' => $type, '%msg' => $error->message, '@code' => $error->code)));
+    $result = NULL;
+  }
+  return $result;
+}
+
+function hosted_site_get_my_domain() {
+  // will return the site base url with the sub-directory (if any) stripped
+  global $base_url;
+  $ix = strpos($base_url, '://') + 3;
+  return ($iy = strpos($base_url, '/', $ix)) ? substr($base_url, $ix, $iy-$ix) : substr($base_url, $ix);
+}
+
+function hosted_site_get_master_url() {
+  return variable_get('hosted_site_master_url', 'weborium.lan');
+}

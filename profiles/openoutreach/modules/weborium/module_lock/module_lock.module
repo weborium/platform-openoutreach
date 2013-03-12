@@ -1,0 +1,274 @@
+<?php
+/**
+ * @file
+ * Functions to implement a module locking capability for site security.
+ *
+ * Created by James Scott (jlscott).
+ * March 2013
+ */
+
+/**
+ * Implements hook_permission()
+ */
+function module_lock_permission() {
+  return array(
+    'administer module locks' => array(
+      'title' => t('Administer module locks'),
+      'description' => t('Permission to enable or disable a locked module, and to set or remove module locks'),
+      'restrict access' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu()
+ */
+function module_lock_menu() {
+  return array(
+    'admin/modules/lock' => array(
+      'title' => 'Locks',
+      'description' => 'Provide administrative functions for managing module locks',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('module_lock_admin_form'),
+      'access callback' => 'user_access',
+      'access arguments' => array('administer module locks'),
+      'type' => MENU_IS_LOCAL_TASK,
+      'weight' => 0,
+    ),
+  );
+}
+
+
+/**
+ * Implements hook_theme()
+ */
+function module_lock_theme() {
+  return array(
+    'module_lock_admin_form_fieldset' => array(
+      'render element' => 'form',
+    ),
+    'module_lock_system_modules_fieldset' => array(
+      'render element' => 'form',
+    ),
+  );
+}
+
+  /**
+   * Implements hook_help().
+   */
+function module_lock_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules':
+      if (user_access('administer module locks')) {
+        $output = '<p>' . t('Module locks are enabled.  Any locked modules will be shown with a background highlight color. These modules can only be enabled or disabled by a user with the "administer module locks" permission. Take care when enabling or disabling these modules as there may be issues around security or functionality for your site.') . '</p>';
+      }
+      else {
+        $output = '<p>' . t('Module locks are enabled. You do not have permission to administer locked modules.');
+      }
+      return $output;
+    case 'admin/modules/lock':
+      $output = '<p>' . t('Specify any modules that should be locked for this site. Only users with the "administer module locks" permission will be able to enable or disable these modules. It is advisable to lock modules that have security or functional implications for your site.') . '</p>';
+      $output .= '<p>' . t('Any locked modules will be shown on the system modules page with a background highlight color. These modules can only be enabled or disabled by a user with the "administer module locks" permission.') . '</p>';
+      return $output;
+  }
+  return '';
+}
+
+/**
+ * Callback function from the menu entry
+ *
+ * Generate the administration form for managing module locks
+ * This is based on the system_modules form
+ *
+ * @param array $form
+ * @param array $form_state
+ * @return array - form array
+ */
+function module_lock_admin_form($form, $form_state = array()) {
+  // Retrieve the list of system modules
+  module_load_include('inc', 'system', 'system.admin');
+  $form = system_modules($form, $form_state);
+
+  // allow any form alter functions for system-modules to run
+  foreach (module_implements('form_alter') as $module) {
+    $function = $module . '_form_alter';
+    $function($form, $form_state, 'system_modules');
+  }
+  foreach (module_implements('form_system_modules_alter') as $module) {
+    $function = $module . '_form_system_modules_alter';
+    $function($form, $form_state);
+  }
+
+  $locked_modules = variable_get('module_lock_locked', array());
+  // remove some unnecessary detail from the array
+  foreach ($form['modules'] as &$item) {
+    if (is_array($item) && $item['#type'] == 'fieldset') {
+      // specify the theme function to use for this fieldset
+      $item['#theme'] = 'module_lock_admin_form_fieldset';
+      // search for individual module details in this fieldset
+      foreach ($item as $name => &$details) {
+        if (is_array($details)) {
+          switch ($name) {
+            case '#header':
+              $details[0]['data'] = t('Locked');
+              unset($details[4]);
+              break;
+
+            default:
+              // $name is module name
+              $details['enable']['#default_value'] = (in_array($name, $locked_modules)) ? 1 : 0;
+              unset($details['enable']['#disabled']);
+              $details['links'] = array();
+              $details['#requires'] = array();
+              $details['#required_by'] = array();
+          }
+        }
+      }
+    }
+  }
+
+  // Change the label on the submit button
+  $form['actions']['submit']['#value'] = t("Save module locks");
+  unset($form['#action']);
+
+  // specify the submit function
+  $form['#submit'] = array('module_lock_admin_form_submit');
+
+
+  return $form;
+}
+
+/**
+ * Submit function for module_lock_admin_form
+ *
+ * Save the list of locked modules in a system variable as an array.
+ *
+ * @param $form
+ * @param $form_state
+ */
+function module_lock_admin_form_submit($form, &$form_state) {
+  // save the specified list of locked modules
+  $locked_modules = array();
+  foreach ($form_state['values']['modules'] as $item) {
+    if (is_array($item)) {
+      foreach ($item as $name => $details) {
+        if (is_array($details)) {
+           if ($details['enable']) {
+             $locked_modules[] = $name;
+           }
+        }
+      }
+    }
+  }
+
+  variable_set('module_lock_locked', $locked_modules);
+  $message = t('Module locks have been saved');
+  drupal_set_message(check_plain($message), 'status');
+  // empty the storage array and redirect
+  //$form_state['storage'] = array();
+  $form_state['redirect'] = 'admin/modules/lock';
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter()
+ *
+ * for form id = system_modules
+ * This function will remove all reference to locked modules unless the current user
+ * has permission to administer module locks.
+ */
+function module_lock_form_system_modules_alter(&$form, &$form_state) {
+  // Specify our own form theme function
+  foreach ($form['modules'] as &$item) {
+    if (is_array($item) && $item['#type'] == 'fieldset') {
+      // specify the theme function to use for this fieldset
+      $item['#theme'] = 'module_lock_system_modules_fieldset';
+    }
+  }
+
+  // Check whether this user is allowed access to locked modules
+  if (user_access('administer module locks')) {
+    return;
+  }
+
+  // Remove all reference to locked modules from the form
+  $locked_modules = variable_get('module_lock_locked', array());
+  foreach ($form['modules'] as &$item) {
+    if (is_array($item) && $item['#type'] == 'fieldset') {
+      foreach ($item as $name => &$details) {
+        if (is_array($details)) {
+          switch ($name) {
+            case '#header':
+              break;
+
+            default:
+              // $name is module name
+              if (in_array($name, $locked_modules)) {
+                unset($item[$name]);
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Theme function to theme the module lock administration form
+ *
+ * This will use the standard system_modules form theme process, and then
+ * adjust the heading to replace "Enabled" with "Locked"
+ *
+ * @param $variables - array, containing the completed form fieldset array
+ * @return string - form fieldset array rendered into html
+ */
+function theme_module_lock_admin_form_fieldset($variables) {
+  // Use the standard system_modules theme functions to process the form
+  $output = theme('system_modules_fieldset', $variables);
+
+  // Replace the "Enabled" header with "Locked"
+  $old[] = '<th class="checkbox">' . t('Enabled') . '</th>';
+  $new[] = '<th class="checkbox">' . t('Locked') . '</th>';
+
+  // now perform the replacements on the html code
+  return str_replace($old, $new, $output);
+}
+
+
+/**
+ * Theme function in place of standard form theme function
+ *
+ * This function will use the standard theme facilities for the system_modules form
+ * but will then adjust the generated html to add a class of "locked" to the table
+ * rows of each locked module.  This will permit css to style these rows differently.
+ * Default css will style these rows with a light red background for highlight.
+ *
+ * @param $variables - array containing the completed form fieldset array
+ * @return string - the form fieldset  array rendered into html
+ */
+function theme_module_lock_system_modules_fieldset($variables) {
+  // Add a css file to highlight the locked rows
+  drupal_add_css(drupal_get_path('module', 'module_lock') . '/module_lock.css', array('preprocess' => FALSE));
+
+  // Use the standard theme functions to generate the output
+  $output = theme('system_modules_fieldset', $variables);
+
+  $locked_modules = variable_get('module_lock_locked', array());
+  $locked_curr = array_intersect($locked_modules, array_keys($variables['form']));
+  if ($locked_curr) {
+    // Create an array of search and replacement strings
+    $old = array();
+    $new = array();
+    foreach ($locked_curr as $module) {
+      $code = str_replace('_', '-', $module);
+      $old[] = '#<tr class="(.+)"><td class="checkbox"><div class="(.+)">(\s*)<input (.+) id="edit-modules-(.+)-' . $code . '-enable#';
+      $new[] = '<tr class="$1 locked"><td class="checkbox"><div class="$2">$3<input $4 id="edit-modules-$5-' . $code . '-enable';
+    }
+    // Scan the output, adding a class of "locked" to each row of a locked module
+    $output = preg_replace($old, $new, $output);
+  }
+  return $output;
+}
+
+/**
+ * End of module
+ */

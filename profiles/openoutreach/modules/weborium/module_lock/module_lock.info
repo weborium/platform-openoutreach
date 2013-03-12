@@ -1,0 +1,4 @@
+name = "Module lock"
+description = "Implements a lock function for installed modules to prevent users without the 'administer module locks' permission from either enabling or disabling them"
+core = 7.x
+package = Other

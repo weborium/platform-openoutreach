@@ -28,8 +28,14 @@ dependencies[] = "search"
 dependencies[] = "shortcut"
 dependencies[] = "strongarm"
 dependencies[] = "taxonomy"
-files[] = "openoutreach.profile"
+; Add Weborium customisations
+dependencies[] = "hosted_site"
+dependencies[] = "memcache"
+dependencies[] = "userone"
+dependencies[] = "module_lock"
+dependencies[] = "permissions_lock"
 
+files[] = "openoutreach.profile"
 
 ; Information added by drupal.org packaging script on 2013-03-08
 version = "7.x-1.0-rc10"
