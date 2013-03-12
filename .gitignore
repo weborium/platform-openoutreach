@@ -1,6 +1,7 @@
-# Ignore configuration files that may contain sensitive information.
-sites/*/settings*.php
+# Ignore aegir configuration files
+drushrc.php
 
-# Ignore paths that contain user-generated content.
-sites/*/files
-sites/*/private
+# Ignore paths that contain hosted sites.
+sites/*.*
+!sites/*.php
+!sites/*.txt
