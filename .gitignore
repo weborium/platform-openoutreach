@@ -5,3 +5,6 @@ drushrc.php
 sites/*.*
 !sites/*.php
 !sites/*.txt
+
+# Ignore modules installed for development and testing
+sites/all/modules/devel
